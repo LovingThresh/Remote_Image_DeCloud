@@ -12,15 +12,18 @@ import cv2
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+
 from utils.src import *
 import imageio
 import random
+
 plt.rcParams["figure.figsize"] = (20, 10)
 # Medium-wave infrared
 mwir_img = imageio.imread('./utils/image_example/mwir_example.png')[:256, :256, 0] / 255
 rgb_img = imageio.imread('./utils/image_example/rgb_example.png')[..., :3] / 255
 
-clear_image, cloud_mask, shadows_mask = add_cloud_and_shadow(rgb_img,
+clear_image, cloud_mask, shadows_mask = add_cloud_and_shadow(cv2.resize(rgb_img, (2048, 2048)),
                                                              return_cloud=True
                                                              )
 # Cloud and Shadows
@@ -61,7 +64,14 @@ plt.title('Channel-wise Shadow Mask')
 plt.show()
 
 # Thick Cloud
-clear_image, cloud_mask = add_cloud(rgb_img,
+clear_image, cloud_mask = add_cloud(cv2.resize(rgb_img, (4096, 1024)),
+                                    min_lvl=0.2,
+                                    max_lvl=1.0,
+                                    clear_threshold=0.0,
+                                    decay_factor=1.5,
+                                    blur_scaling=0,
+                                    const_scale=True,
+                                    cloud_color=False,
                                     return_cloud=True
                                     )
 
@@ -97,8 +107,8 @@ plt.show()
 
 # Thin Fog
 clear_image, Fog_mask = add_cloud(rgb_img,
-                                  min_lvl=(0.5, 0.65),
-                                  max_lvl=(0.7, 0.75),
+                                  min_lvl=0.2,
+                                  max_lvl=1.0,
                                   decay_factor=1,
                                   return_cloud=True)
 
@@ -173,12 +183,90 @@ plt.imshow(mask)
 plt.title('Channel-wise Cloud Mask')
 plt.show()
 
-v = 20
-for t in range(20):
-    s = v * t
-    crop_image = cloud_mask[512 - 256: 512 + 256, 0 + s: 512 + s, :]
-    crop_image = cv2.cvtColor(np.uint8(crop_image.numpy() * 255), cv2.COLOR_RGB2BGR)
-    cv2.imwrite('crop_image/{}s.png'.format(t), crop_image)
+for i in range(1000):
+    v_x = 192
+    v_y = 192
+    seed = random.randint(1, 4)
+    if seed == 1:
+        clear_image, cloud_mask = add_cloud(cv2.resize(rgb_img, (4096 - 512, 1024)),
+                                            min_lvl=0.2,
+                                            max_lvl=1.0,
+                                            clear_threshold=0.0,
+                                            decay_factor=1.5,
+                                            blur_scaling=1.0,
+                                            const_scale=True,
+                                            cloud_color=False,
+                                            return_cloud=True
+                                            )
+        cloud_mask_left = torch.zeros((1024, 256, 3))
+        cloud_mask_right = torch.zeros((1024, 256, 3))
+        cloud_mask = torch.concat([cloud_mask_left, cloud_mask, cloud_mask_right], dim=1)
+        os.mkdir('crop_image_1024/{}_{}'.format(i, seed))
+        for t in range(17):
+            s = v_y * t
+            crop_image = cloud_mask[0:1024, 0 + s: 1024 + s, :]
+            crop_image = cv2.cvtColor(np.uint8(crop_image.numpy() * 255), cv2.COLOR_RGB2BGR)
+            cv2.imwrite('crop_image_1024/{}_{}/{}s.png'.format(i, seed, t), crop_image)
+    if seed == 2:
+        clear_image, cloud_mask = add_cloud(cv2.resize(rgb_img, (1024, 4096 - 512)),
+                                            min_lvl=0.15,
+                                            max_lvl=1.0,
+                                            clear_threshold=0.0,
+                                            decay_factor=1.5,
+                                            blur_scaling=1.0,
+                                            const_scale=True,
+                                            cloud_color=False,
+                                            return_cloud=True
+                                            )
+        cloud_mask_left = torch.zeros((256, 1024, 3))
+        cloud_mask_right = torch.zeros((256, 1024, 3))
+        cloud_mask = torch.concat([cloud_mask_left, cloud_mask, cloud_mask_right], dim=0)
+        os.mkdir('crop_image_1024/{}_{}'.format(i, seed))
+        for t in range(17):
+            s = v_x * t
+            crop_image = cloud_mask[0 + s: 1024 + s, 0:1024, :]
+            crop_image = cv2.cvtColor(np.uint8(crop_image.numpy() * 255), cv2.COLOR_RGB2BGR)
+            cv2.imwrite('crop_image_1024/{}_{}/{}s.png'.format(i, seed, t), crop_image)
+    if seed == 3:
+        clear_image, cloud_mask = add_cloud(cv2.resize(rgb_img, (4096 - 512, 1024)),
+                                            min_lvl=0.15,
+                                            max_lvl=1.0,
+                                            clear_threshold=0.0,
+                                            decay_factor=1.5,
+                                            blur_scaling=1.0,
+                                            const_scale=True,
+                                            cloud_color=False,
+                                            return_cloud=True
+                                            )
+        cloud_mask_left = torch.zeros((1024, 256, 3))
+        cloud_mask_right = torch.zeros((1024, 256, 3))
+        cloud_mask = torch.concat([cloud_mask_left, cloud_mask, cloud_mask_right], dim=1)
+        os.mkdir('crop_image_1024/{}_{}'.format(i, seed))
+        for t in range(17):
+            s = v_y * t
+            crop_image = cloud_mask[0 : 1024, 3072 - s : 4096 - s, :]
+            crop_image = cv2.cvtColor(np.uint8(crop_image.numpy() * 255), cv2.COLOR_RGB2BGR)
+            cv2.imwrite('crop_image_1024/{}_{}/{}s.png'.format(i, seed, t), crop_image)
+    if seed == 4:
+        clear_image, cloud_mask = add_cloud(cv2.resize(rgb_img, (1024, 4096 - 512)),
+                                            min_lvl=0.15,
+                                            max_lvl=1.0,
+                                            clear_threshold=0.0,
+                                            decay_factor=1.5,
+                                            blur_scaling=1.0,
+                                            const_scale=True,
+                                            cloud_color=False,
+                                            return_cloud=True
+                                            )
+        cloud_mask_left = torch.zeros((256, 1024, 3))
+        cloud_mask_right = torch.zeros((256, 1024, 3))
+        cloud_mask = torch.concat([cloud_mask_left, cloud_mask, cloud_mask_right], dim=0)
+        os.mkdir('crop_image_1024/{}_{}'.format(i, seed))
+        for t in range(17):
+            s = v_x * t
+            crop_image = cloud_mask[3072 - s : 4096 - s, 0:1024, :]
+            crop_image = cv2.cvtColor(np.uint8(crop_image.numpy() * 255), cv2.COLOR_RGB2BGR)
+            cv2.imwrite('crop_image_1024/{}_{}/{}s.png'.format(i, seed, t), crop_image)
 
 # Mix Function
 cloud = 1 - mask

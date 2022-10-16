@@ -96,6 +96,7 @@ generator = Net()
 # generator = RepVGG(num_blocks=[2, 4, 14, 1], num_classes=2,
 #                    width_multiplier=[0.75, 0.75, 0.75, 2.5], override_groups_map=None, deploy=deploy)
 # generator.apply(weights_init)
+
 discriminator = define_D(3, 64, 'basic', use_sigmoid=True, norm='instance')
 
 

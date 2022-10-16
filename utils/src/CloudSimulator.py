@@ -6,28 +6,30 @@ import kornia.geometry.transform as KT
 from .LocalGaussianBlur import *
 from .noise import *
 
+
 # --- Extra Functions
 def misalign_channels(cloud):
     return cloud
 
+
 def cloud_hue(image, cloud):
     # Mean Cloud-Free Color
-    mean_color = image.mean((0,1))
+    mean_color = image.mean((0, 1))
     ambience = torch.ones_like(image)
-    
-    if all(mean_color==0):
-        return ambience # prevent mixing with pitch black
+
+    if all(mean_color == 0):
+        return ambience  # prevent mixing with pitch black
     else:
-        return ambience*cloud + (mean_color/mean_color.mean())*ambience*(1-cloud)
-    
+        return ambience * cloud + (mean_color / mean_color.mean()) * ambience * (1 - cloud)
+
 
 # --- Mixing Methods
 
 def add_cloud(input,
-              max_lvl=(0.95,1.0),
+              max_lvl=(0.95, 1.0),
               min_lvl=(0.0, 0.05),
               clear_threshold=0.0,
-              noise_type = 'perlin',
+              noise_type='perlin',
               const_scale=True,
               decay_factor=1,
               invert=False,
@@ -35,7 +37,7 @@ def add_cloud(input,
               blur_scaling=2.0,
               cloud_color=True,
               return_cloud=False
-             ):
+              ):
     """ Takes an input image of shape [height, width, channels]        
         and returns a generated cloudy version of the input image
     
@@ -53,7 +55,7 @@ def add_cloud(input,
         
         invert (bool) : for some applications, the cloud can be inverted to effectively decrease the level of reflected power (see thermal example in the notebook)
         
-        channel_offset (int): optional offset that can randomly misalign spatially the individual cloud mask channels (by a value in range -channel_offset and +channel_offset)
+        channel_offset (int): optional offset that can randomly misaligned spatially the individual cloud mask channels (by a value in range -channel_offset and +channel_offset)
         
         blur_scaling (float): Scaling factor for the variance of locally varying Gaussian blur (dependent on cloud thickness). Value of 0 will disable this feature.
         
@@ -65,89 +67,90 @@ def add_cloud(input,
     
         Tensor: Tensor containing a generated cloudy image (and a cloud mask if return_cloud == True)
   
-    """  
-    
+    """
+
     if not torch.is_tensor(input):
         input = torch.FloatTensor(input)
-    
+
     if len(input.shape) == 2:
         input = input.unsqueeze(-1)
-    
-    h,w,c = input.shape[-3:]
-    
+
+    h, w, c = input.shape[-3:]
+
     if isinstance(min_lvl, tuple) or isinstance(min_lvl, list):
-        min_lvl = min_lvl[0] +(min_lvl[1]-min_lvl[0])*torch.rand(1).item()
-        
+        min_lvl = min_lvl[0] + (min_lvl[1] - min_lvl[0]) * torch.rand(1).item()
+
     if isinstance(max_lvl, tuple) or isinstance(max_lvl, list):
-        max_lvl = max_lvl[0] + (max_lvl[1]-max_lvl[0])*torch.rand(1).item()
-      
+        max_lvl = max_lvl[0] + (max_lvl[1] - max_lvl[0]) * torch.rand(1).item()
+
     # generate noise shape
     if noise_type == 'perlin':
-        noise_shape = generate_perlin(shape=(h,w), const_scale=const_scale, decay_factor=decay_factor).numpy()              
+        noise_shape = generate_perlin(shape=(h, w), const_scale=const_scale, decay_factor=decay_factor).numpy()
     elif noise_type == 'flex':
-        noise_shape = flex_noise(h,w, const_scale=const_scale, decay_factor=decay_factor).numpy()
+        noise_shape = flex_noise(h, w, const_scale=const_scale, decay_factor=decay_factor).numpy()
     else:
         raise NotImplementedError
-        
+
     noise_shape -= noise_shape.min()
     noise_shape /= noise_shape.max()
 
     noise_shape = torch.FloatTensor(noise_shape)
-        
+
     # apply non-linearities
     noise_shape[noise_shape < clear_threshold] = 0.0
-    noise_shape -= clear_threshold  
-    noise_shape = noise_shape.clip(0,1)
+    noise_shape -= clear_threshold
+    noise_shape = noise_shape.clip(0, 1)
     noise_shape /= noise_shape.max()
 
-    cloud = torch.stack(c*[1.0*noise_shape*(max_lvl-min_lvl) + min_lvl], 0)
-    
+    cloud = torch.stack(c * [1.0 * noise_shape * (max_lvl - min_lvl) + min_lvl], 0)
+
     # channel offset (optional)
     if channel_offset != 0:
-        offsets = torch.randint(-channel_offset, channel_offset+1, (2,c))
-        
+        offsets = torch.randint(-channel_offset, channel_offset + 1, (2, c))
+
         crop_val = offsets.max().abs()
         if crop_val != 0:
             for ch in range(cloud.shape[0]):
-                cloud[ch] = torch.roll(cloud[ch], offsets[0,ch].item(),dims=0)
-                cloud[ch] = torch.roll(cloud[ch], offsets[1,ch].item(),dims=1)                    
+                cloud[ch] = torch.roll(cloud[ch], offsets[0, ch].item(), dims=0)
+                cloud[ch] = torch.roll(cloud[ch], offsets[1, ch].item(), dims=1)
 
-                cloud = KT.resize(cloud[:,crop_val:-crop_val-1, crop_val:-crop_val-1],
-                                  (h,w),
+                cloud = KT.resize(cloud[:, crop_val:-crop_val - 1, crop_val:-crop_val - 1],
+                                  (h, w),
                                   interpolation='bilinear',
                                   align_corners=True)
-    cloud = cloud.permute(1,2,0)
-    
+    cloud = cloud.permute(1, 2, 0)
+
     # blurring background (optional)
     if blur_scaling != 0.0:
-        modulator = 1-cloud.permute(2,0,1).mean(0)
-        input = local_gaussian_blur(input.permute(2,0,1),
-                                    blur_scaling*modulator)[0].permute(1,2,0)
-        
+        modulator = 1 - cloud.permute(2, 0, 1).mean(0)
+        input = local_gaussian_blur(input.permute(2, 0, 1),
+                                    blur_scaling * modulator)[0].permute(1, 2, 0)
+
     # mix the cloud
     if invert:
         output = input * (1 - cloud)
     else:
-        cloud_base = torch.ones_like(input) if not cloud_color else cloud_hue(input, 1-cloud)
-        output = input * cloud + cloud_base * (1-cloud)
-    
+        cloud_base = torch.ones_like(input) if not cloud_color else cloud_hue(input, 1 - cloud)
+        output = input * cloud + cloud_base * (1 - cloud)
+
     if not return_cloud:
         return output
     else:
-        return output, 1.0-cloud if not invert else cloud
+        return output, 1.0 - cloud if not invert else cloud
+
 
 def add_cloud_and_shadow(input,
                          max_lvl=(0.95, 1.0),
                          min_lvl=(0.0, 0.05),
                          clear_threshold=0.0,
-                         noise_type = 'perlin',
+                         noise_type='perlin',
                          const_scale=True,
                          decay_factor=1,
                          channel_offset=2,
                          blur_scaling=2.0,
                          cloud_color=True,
                          return_cloud=False
-                        ):
+                         ):
     """ Takes an input image of shape [height, width, channels]        
         and returns a generated cloudy version of the input image, with additional shadows added to the ground image
     
@@ -175,23 +178,23 @@ def add_cloud_and_shadow(input,
     
         Tensor: Tensor containing a generated cloudy image (and a cloud mask if return_cloud == True)
   
-    """  
-    
+    """
+
     # 1. Add Shadows
     input, shadow_mask = add_cloud(input,
                                    max_lvl=0.7,
                                    min_lvl=(0.0, 0.05),
                                    clear_threshold=0.5,
-                                   noise_type = 'perlin',
+                                   noise_type='perlin',
                                    const_scale=const_scale,
-                                   decay_factor=1.5, # Suppress HF detail
-                                   invert=True, # Invert Color for shadow
-                                   channel_offset=0, # Cloud SFX disabled
-                                   blur_scaling=0.0, # Cloud SFX disabled
-                                   cloud_color=False, # Cloud SFX disabled
+                                   decay_factor=1.5,  # Suppress HF detail
+                                   invert=True,  # Invert Color for shadow
+                                   channel_offset=0,  # Cloud SFX disabled
+                                   blur_scaling=0.0,  # Cloud SFX disabled
+                                   cloud_color=False,  # Cloud SFX disabled
                                    return_cloud=True
-             )
-    
+                                   )
+
     # 2. Add Cloud
     input, cloud_mask = add_cloud(input,
                                   max_lvl=max_lvl,
@@ -205,8 +208,8 @@ def add_cloud_and_shadow(input,
                                   blur_scaling=blur_scaling,
                                   cloud_color=cloud_color,
                                   return_cloud=True
-                                 )
-    
+                                  )
+
     if not return_cloud:
         return input
     else:
