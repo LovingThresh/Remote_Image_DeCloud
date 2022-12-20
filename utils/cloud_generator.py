@@ -107,8 +107,8 @@ plt.show()
 
 # Thin Fog
 clear_image, Fog_mask = add_cloud(rgb_img,
-                                  min_lvl=0.2,
-                                  max_lvl=1.0,
+                                  min_lvl=0.6,
+                                  max_lvl=0.7,
                                   decay_factor=1,
                                   return_cloud=True)
 
