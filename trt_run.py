@@ -5,29 +5,25 @@
 # @File    : trt_run.py
 # @Software: PyCharm
 # 导入必用依赖
+import torch
+import numpy as np
 import tensorrt as trt
-onnx_path = 'MSBDN_RDFF_sim.onnx'
-engine_path = 'MSBDN_RDFF.trt'
-# 创建logger：日志记录器
-logger = trt.Logger(trt.Logger.WARNING)
+from torch2trt import TRTModule
 
-# 创建构建器builder
-builder = trt.Builder(logger)
-# 预创建网络
-network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-# 加载onnx解析器
-parser = trt.OnnxParser(network, logger)
-success = parser.parse_from_file(onnx_path)
-for idx in range(parser.num_errors):
-    print(parser.get_error(idx))
-if not success:
-    pass  # Error handling code here
-# builder配置
-config = builder.create_builder_config()
-# 分配显存作为工作区间，一般建议为显存一半的大小
-config.max_workspace_size = 4 << 30  # 1 Mi
-serialized_engine = builder.build_serialized_network(network, config)
-# 序列化生成engine文件
-with open(engine_path, "wb") as f:
-    f.write(serialized_engine)
-    print("generate file success!")
+# 加载日志记录器
+logger = trt.Logger(trt.Logger.INFO)
+# 加载engine
+with open('MSBDN_RDFF_sim_engine.trt', 'rb') as f, trt.Runtime(logger) as runtime:
+    engine = runtime.deserialize_cuda_engine(f.read())
+
+net = TRTModule(engine, input_names=['input'], output_names=['output'])
+
+# 推理
+data = np.random.rand(1, 3, 256, 256).astype(np.float32)
+data_tensor = torch.from_numpy(data)
+data_tensor = data_tensor.to('cuda')
+
+# 结果
+result = net(data_tensor)
+
+
